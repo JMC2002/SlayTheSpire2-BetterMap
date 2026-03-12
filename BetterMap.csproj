@@ -1,0 +1,156 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <!-- Mod 基础信息 -->
+    <ModName>$(MSBuildProjectName)</ModName>
+
+    <!-- 路径配置 -->
+    <SteamLibraryPath>D:\SteamLibrary\steamapps\</SteamLibraryPath>
+    <Sts2Path>$(SteamLibraryPath)common\Slay the Spire 2</Sts2Path>
+    <Sts2DataDir>$(Sts2Path)\data_sts2_windows_x86_64</Sts2DataDir>
+    <GodotExe>C:\Tools\Godot_v4.5.1-stable_mono_win64\Godot_v4.5.1-stable_mono_win64.exe</GodotExe>
+
+    <!-- 🌟 你约定的同名资源暂存文件夹 -->
+    <ModLocalDir>$(ProjectDir)$(ModName)</ModLocalDir>
+
+    <!-- 游戏最终加载的 mods 目录 -->
+    <ModGameDir>$(Sts2Path)\mods\$(ModName)</ModGameDir>
+  </PropertyGroup>
+
+  <!-- 引用游戏 DLL -->
+  <ItemGroup>
+    <Reference Include="GodotSharp" HintPath="$(Sts2DataDir)\GodotSharp.dll" Private="false" />
+    <Reference Include="sts2" HintPath="$(Sts2DataDir)\sts2.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(Sts2DataDir)\0Harmony.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- ======================================================== -->
+  <!-- 自动化流水线：构建 -> 暂存区组装 -> Godot 打包 -> 部署 -->
+  <!-- ======================================================== -->
+
+  <!-- ======================================================== -->
+  <!-- 自动化任务：智能生成 Godot 配置文件与 Mod 清单 (仅在缺少时生成) -->
+  <!-- ======================================================== -->
+  <!-- ======================================================== -->
+  <!-- 自动化任务：智能生成 Godot 配置文件与 Mod 清单 (增强版) -->
+  <!-- ======================================================== -->
+  <Target Name="EnsureGodotProjectFiles" BeforeTargets="BuildAndDeploy">
+    <Message Text="🔍 检查并补全暂存区 Godot 配置文件..." Importance="High" />
+    <MakeDir Directories="$(ModLocalDir)" />
+
+    <!-- 1. 生成 project.godot (使用 ASCII 彻底杜绝 BOM 导致 Godot 解析失败) -->
+    <PropertyGroup Condition="!Exists('$(ModLocalDir)\project.godot')">
+      <ProjectGodotText>
+; Engine configuration file.
+config_version=5
+
+[application]
+config/name="$(ModName)"
+      </ProjectGodotText>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(ModLocalDir)\project.godot" Lines="$(ProjectGodotText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\project.godot')" />
+    <Message Text="➕ 自动创建了 project.godot (ASCII 纯净版)" Condition="!Exists('$(ModLocalDir)\project.godot')" Importance="High" />
+
+    <!-- 2. 生成 export_presets.cfg (补齐了 Godot 4 必须的 options 默认键值对) -->
+    <PropertyGroup Condition="!Exists('$(ModLocalDir)\export_presets.cfg')">
+      <ExportPresetsText>
+[preset.0]
+
+name="Windows Desktop"
+platform="Windows Desktop"
+runnable=true
+dedicated_server=false
+custom_features=""
+export_filter="all_resources"
+include_filter="*.json, *.png, *.csv"
+exclude_filter=""
+export_path=""
+encryption_include_filters=""
+encryption_exclude_filters=""
+encrypt_pck=false
+encrypt_directory=false
+
+[preset.0.options]
+
+custom_template/debug=""
+custom_template/release=""
+debug/export_console_wrapper=1
+binary_format/embed_pck=false
+texture_format/bptc=true
+texture_format/s3tc=true
+texture_format/etc=false
+texture_format/etc2=false
+      </ExportPresetsText>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(ModLocalDir)\export_presets.cfg" Lines="$(ExportPresetsText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\export_presets.cfg')" />
+    <Message Text="➕ 自动创建了 export_presets.cfg (完美版)" Condition="!Exists('$(ModLocalDir)\export_presets.cfg')" Importance="High" />
+    <!-- 3. 生成 mod_manifest.json -->
+    <PropertyGroup Condition="!Exists('$(ModLocalDir)\mod_manifest.json')">
+      <ManifestText>
+{
+    "pck_name": "$(ModName)",
+    "name": "$(ModName)",
+    "author": "JMC",
+    "version": "1.0.0",
+    "description": "$(ModName) Description"
+}
+      </ManifestText>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(ModLocalDir)\mod_manifest.json" Lines="$(ManifestText)" Overwrite="false" Encoding="utf-8" Condition="!Exists('$(ModLocalDir)\mod_manifest.json')" />
+    <Message Text="➕ 自动创建了 mod_manifest.json" Condition="!Exists('$(ModLocalDir)\mod_manifest.json')" Importance="High" />
+
+  </Target>
+  
+  <Target Name="BuildAndDeploy" AfterTargets="Build">
+
+    <!-- 1. 确保你的同名文件夹存在 -->
+    <MakeDir Directories="$(ModLocalDir)" />
+
+    <!-- 2. 将编译出的 DLL 复制到同名文件夹中 -->
+    <Message Text="[1/3] 复制 DLL 到暂存区: $(ModLocalDir)" Importance="High" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModLocalDir)" />
+
+    <!-- 3. 调用 Godot，在同名文件夹内打包 PCK -->
+    <Message Text="[2/3] 调用 Godot 打包 PCK..." Importance="High" />
+    <Exec Command="&quot;$(GodotExe)&quot; --headless --export-pack &quot;Windows Desktop&quot; &quot;$(ModName).pck&quot;" WorkingDirectory="$(ModLocalDir)" StdOutEncoding="utf-8" StdErrEncoding="utf-8" EnvironmentVariables="NO_COLOR=1" Condition="Exists('$(GodotExe)') And Exists('$(ModLocalDir)\export_presets.cfg')" />
+
+    <Warning Text="⚠️ 未找到 Godot 或 export_presets.cfg，已跳过 PCK 打包。" Condition="!Exists('$(GodotExe)') Or !Exists('$(ModLocalDir)\export_presets.cfg')" />
+
+    <!-- 4. 使用类似你之前喜欢的 Robocopy，将整个组装好的同名文件夹同步到游戏目录 -->
+    <Message Text="[3/3] 将暂存区同步到游戏目录: $(ModGameDir)" Importance="High" />
+    <MakeDir Directories="$(ModGameDir)" />
+    <!-- 使用 /MIR (镜像) 或 /E /XO (增量更新)，排除掉 Godot 自己的工程文件 -->
+    <Exec Command="robocopy &quot;$(ModLocalDir)&quot; &quot;$(ModGameDir)&quot; /E /XO /XD .godot /XF project.godot export_presets.cfg" IgnoreExitCode="true" StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="RoboExitCode" />
+    </Exec>
+    <!-- 容忍 Robocopy 0-3 的成功返回码 -->
+    <Error Condition="$(RoboExitCode) &gt; 3" Text="❌ Robocopy 同步失败（代码 $(RoboExitCode)）！" />
+
+    <Message Text="✅ Mod 构建与部署全流程完成！" Importance="High" />
+  </Target>
+
+  <!-- 5. 可选：弹窗询问启动游戏 -->
+  <Target Name="AskToLaunchGame" AfterTargets="BuildAndDeploy">
+    <!-- 1. 确保游戏环境就绪：生成 steam_appid.txt (只在文件不存在时创建)，防止游戏拦截 -->
+    <WriteLinesToFile File="$(Sts2Path)\steam_appid.txt"
+                      Lines="2868840"
+                      Overwrite="false"
+                      Encoding="ASCII"
+                      Condition="!Exists('$(Sts2Path)\steam_appid.txt')" />
+
+    <PropertyGroup>
+      <GameExe>$(Sts2Path)\SlayTheSpire2.exe</GameExe>
+      <LaunchArgs></LaunchArgs>
+    </PropertyGroup>
+
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command ^&#xD;&#xA;        Add-Type -AssemblyName PresentationFramework; ^&#xD;&#xA;        $res = [System.Windows.MessageBox]::Show('Mod已同步！是否立刻启动《杀戮尖塔2》并打开调试终端？','启动游戏','YesNo','Question'); ^&#xD;&#xA;        if ($res -eq 'Yes') { Start-Process '&quot;$(GameExe)&quot;' }"
+      IgnoreExitCode="true" />
+  </Target>
+
+</Project>
