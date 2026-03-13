@@ -1,8 +1,7 @@
-﻿using System.Collections.Generic;
-using System.Reflection;
-using Godot;
+﻿using Godot;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using System.Reflection;
 
 namespace BetterMap.Core;
 
@@ -15,6 +14,9 @@ public partial class MapOverviewPanel : Control
     private const float BaseBottomPad = 60f;
     private const float BaseInnerPad = 3f;
     private const float BgAlpha = 0.88f;
+
+    // ================== Timer 刷新参数 ==================
+    private const double SyncInterval = 1d / 144;
     // ===============================================================
 
     // layer=1 → TheMap，CullMask bit=0
@@ -28,10 +30,8 @@ public partial class MapOverviewPanel : Control
         { "MapLegend", "Back", "DrawingTools", "DrawingToolsHotkey", "ActBanner" };
 
     // NGlobalUi 内需要提升的节点（排在 NMapScreen 之后、需要显示在地图之上的）
-    // 根据之前日志：index 0=OverlayScreensContainer 在 NMapScreen 之前，index 2以后在之后
-    // 全部提升到 layer=2 保险
     private static readonly string[] GlobalUiAboveNames =
-    {
+    [
         "OverlayScreensContainer",
         "CapstoneScreenContainer",
         "MultiplayerPlayerContainer",
@@ -47,12 +47,13 @@ public partial class MapOverviewPanel : Control
         "ParticleCounter",
         "DebugInfo",
         "TargetManager",
-    };
+    ];
 
     private ColorRect _background;
     private SubViewportContainer _svc;
     private SubViewport _sv;
     private ColorRect _viewportIndicator;
+    private Godot.Timer _syncTimer;
     private bool _built;
 
     private Control _mapContainer;
@@ -128,14 +129,23 @@ public partial class MapOverviewPanel : Control
         };
         _svc.AddChild(_viewportIndicator);
 
-        RenderingServer.FramePostDraw += OnFramePostDraw;
+        // 初始化 Timer
+        _syncTimer = new Godot.Timer
+        {
+            Name = "MapSyncTimer",
+            WaitTime = SyncInterval,
+            OneShot = false,
+            Autostart = false
+        };
+        _syncTimer.Timeout += OnSyncTimerTimeout;
+        AddChild(_syncTimer);
+
         ModLogger.Info($"EnsureBuilt 完成 SvCullMask={SvCullMask}");
     }
 
     public override void _Ready() { EnsureBuilt(); ApplyLayout(); }
     public override void _ExitTree()
     {
-        RenderingServer.FramePostDraw -= OnFramePostDraw;
         TeardownCanvas();
     }
     public override void _Process(double delta) { }
@@ -179,40 +189,33 @@ public partial class MapOverviewPanel : Control
         {
             var globalUi = _mapScreen.GetParent(); // NGlobalUi
 
-            // ── 1. 创建 CanvasLayer 节点 ──
-            // _clMap 挂在 NMapScreen 下（坐标系与 TheMap 一致）
             _clMap = new CanvasLayer { Name = "BM_LayerMap", Layer = LayerMap };
             _mapScreen.AddChild(_clMap);
 
-            // _clAbove 挂在 NGlobalUi 下（覆盖整个 UI 层）
             _clAbove = new CanvasLayer { Name = "BM_LayerAbove", Layer = LayerAbove };
             globalUi.AddChild(_clAbove);
 
-            // ── 2. TheMap → layer=1 ──
             _mapOrigParent = _mapContainer.GetParent();
             _mapOrigIndex = _mapContainer.GetIndex();
             _mapContainer.Reparent(_clMap, keepGlobalTransform: true);
-            ModLogger.Info($"TheMap → layer={LayerMap}, canvas={_mapContainer.GetCanvas()}");
 
-            // ── 3. NMapScreen 内上层UI → layer=2 ──
             _movedNodes.Clear();
             MoveNodesToAbove(_mapScreen, MapScreenAboveNames);
 
-            // ── 4. NGlobalUi 内其他上层节点 → layer=2 ──
             MoveNodesToAbove(globalUi, GlobalUiAboveNames);
 
             var game = _mapScreen.GetTree().Root.GetNodeOrNull<Node>("Game");
             if (game != null)
-                MoveNodesToAbove(game, new[] {
-        "InspectionContainer",
-        "RemoteCursorContainer",
-        "ReactionWheel",
-        "ReactionContainer",
-        "HoverTipsContainer",
-        "ModalContainer",
-        "FeedbackScreen",
-        "GameTransitionRect",
-    });
+                MoveNodesToAbove(game, [
+                    "InspectionContainer",
+                    "RemoteCursorContainer",
+                    "ReactionWheel",
+                    "ReactionContainer",
+                    "HoverTipsContainer",
+                    "ModalContainer",
+                    "FeedbackScreen",
+                    "GameTransitionRect",
+                ]);
 
             // ── 5. 附加 Canvas 到 SubViewport ──
             _svRid = _sv.GetViewportRid();
@@ -232,6 +235,8 @@ public partial class MapOverviewPanel : Control
 
             _canvasReady = true;
             SyncTransform();
+
+            _syncTimer.Start();
             ModLogger.Info($"SetupCanvas 完成 scale={_scale:F4}");
         }
         catch (System.Exception ex)
@@ -255,6 +260,8 @@ public partial class MapOverviewPanel : Control
 
     private void TeardownCanvas()
     {
+        _syncTimer?.Stop();
+
         if (_svRid.IsValid && _mapCanvasRid.IsValid)
         {
             try { RenderingServer.ViewportRemoveCanvas(_svRid, _mapCanvasRid); }
@@ -291,7 +298,6 @@ public partial class MapOverviewPanel : Control
             {
                 _mapContainer.Reparent(_mapOrigParent, keepGlobalTransform: true);
                 _mapOrigParent.MoveChild(_mapContainer, _mapOrigIndex);
-                ModLogger.Info("TheMap 还原完成");
             }
             catch (System.Exception ex) { ModLogger.Warn($"还原 TheMap: {ex.Message}"); }
         }
@@ -301,6 +307,7 @@ public partial class MapOverviewPanel : Control
         if (_clAbove != null && GodotObject.IsInstanceValid(_clAbove)) { _clAbove.QueueFree(); _clAbove = null; }
         if (_clMap != null && GodotObject.IsInstanceValid(_clMap)) { _clMap.QueueFree(); _clMap = null; }
     }
+
     // ──────────────────────────────────────────────────────────────
     public void SyncTransform()
     {
@@ -322,13 +329,7 @@ public partial class MapOverviewPanel : Control
         RenderingServer.ViewportSetCanvasTransform(_svRid, _mapCanvasRid, t);
     }
 
-    private void OnFramePostDraw()
-    {
-        if (!Visible || !_canvasReady) return;
-        Callable.From(OnFrameMainThread).CallDeferred();
-    }
-
-    private void OnFrameMainThread()
+    private void OnSyncTimerTimeout()
     {
         if (!Visible || !_canvasReady) return;
         if (_mapContainer == null || !GodotObject.IsInstanceValid(_mapContainer)) return;
