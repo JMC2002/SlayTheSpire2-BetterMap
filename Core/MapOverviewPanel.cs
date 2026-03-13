@@ -9,13 +9,12 @@ namespace BetterMap.Core;
 public partial class MapOverviewPanel : Control
 {
     // ================== 基准参数 (以 1080P 为基准) ==================
-    // 这里的数值你可以按照 1080P 下的感觉来设置
-    private const float BaseLeft = 100f;          // 1080P 下左边距
-    private const float BaseTop = 150f;          // 1080P 下顶边距
-    private const float BaseWidth = 280f;        // 1080P 下面板宽度
-    private const float BaseBottomPadding = 60f; // 1080P 下底部留白
-    private const float BaseInnerPadding = 6f;   // 1080P 下内边距
-    private const float BgAlpha = 0.88f;        // 背景透明度
+    private const float BaseLeft = 100f;
+    private const float BaseTop = 150f;
+    private const float BaseWidth = 280f;
+    private const float BaseBottomPadding = 60f;
+    private const float BaseInnerPadding = 6f;
+    private const float BgAlpha = 0.88f;
     // ===============================================================
 
     private ColorRect _background;
@@ -30,11 +29,15 @@ public partial class MapOverviewPanel : Control
     private Vector2 _worldMax;
 
     private Rid _svRid;
-    private Rid _originalCanvasRid;
+    private Rid _mapCanvasRid;
     private bool _canvasReady;
     private float _scale;
 
-    // 删除了 _uiHiddenNodes 列表
+    // 为 TheMap 创建的专属 CanvasLayer
+    private CanvasLayer _mapCanvasLayer;
+    // TheMap 的原始父节点和索引，用于还原
+    private Node _mapOriginalParent;
+    private int _mapOriginalIndex;
 
     private static readonly FieldInfo DictField =
         typeof(NMapScreen).GetField("_mapPointDictionary",
@@ -77,8 +80,7 @@ public partial class MapOverviewPanel : Control
             HandleInputLocally = false,
             RenderTargetClearMode = SubViewport.ClearMode.Always,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-            // 确保视口可以看到所有层
-            CanvasCullMask = 0xffffffff
+            CanvasCullMask = 0xffffffff,
         };
         _svc.AddChild(_sv);
 
@@ -104,6 +106,7 @@ public partial class MapOverviewPanel : Control
     public override void _ExitTree()
     {
         RenderingServer.FramePostDraw -= OnFramePostDraw;
+        RestoreMapToOriginalParent();
     }
 
     public override void _Process(double delta) { }
@@ -129,36 +132,33 @@ public partial class MapOverviewPanel : Control
     public void HidePanel()
     {
         Visible = false;
-        // 删除了 RestoreVisibilityLayers 调用
-        if (_svRid.IsValid && _originalCanvasRid.IsValid)
-            RenderingServer.ViewportRemoveCanvas(_svRid, _originalCanvasRid);
+        if (_svRid.IsValid && _mapCanvasRid.IsValid)
+            RenderingServer.ViewportRemoveCanvas(_svRid, _mapCanvasRid);
         _canvasReady = false;
+        RestoreMapToOriginalParent();
         ModLogger.Info("MapOverviewPanel HidePanel");
     }
 
-    // 同步变换逻辑微调：确保地图在视口内是靠顶或者居中的
     public void SyncTransform()
     {
-        if (!_canvasReady || !_svRid.IsValid || !_originalCanvasRid.IsValid) return;
+        if (!_canvasReady || !_svRid.IsValid || !_mapCanvasRid.IsValid) return;
         if (_mapContainer == null || !GodotObject.IsInstanceValid(_mapContainer)) return;
 
         var svSize = new Vector2(_sv.Size.X, _sv.Size.Y);
         var mapRange = _worldMax - _worldMin;
 
-        // 计算水平和垂直的居中偏移
         float offsetX = (svSize.X - mapRange.X * _scale) * 0.5f;
         float offsetY = (svSize.Y - mapRange.Y * _scale) * 0.5f;
 
         var mp = _mapContainer.Position;
 
-        // 构建变换矩阵
         var t = new Transform2D(
             new Vector2(_scale, 0),
             new Vector2(0, _scale),
             new Vector2(-(mp.X + _worldMin.X) * _scale + offsetX,
                         -(mp.Y + _worldMin.Y) * _scale + offsetY)
         );
-        RenderingServer.ViewportSetCanvasTransform(_svRid, _originalCanvasRid, t);
+        RenderingServer.ViewportSetCanvasTransform(_svRid, _mapCanvasRid, t);
     }
 
     private void OnFramePostDraw()
@@ -182,12 +182,8 @@ public partial class MapOverviewPanel : Control
         if (vp == null) return;
 
         Vector2 screenSize = vp.GetVisibleRect().Size;
-
-        // 【核心逻辑】计算 GUI 缩放因子 (以 1080P 的高度为参考)
-        // 这样在 4K (2160P) 下，guiScale 就会是 2.0
         float guiScale = screenSize.Y / 1080f;
 
-        // 根据缩放因子计算当前分辨率下的实际像素值
         float actualLeft = BaseLeft * guiScale;
         float actualTop = BaseTop * guiScale;
         float actualWidth = BaseWidth * guiScale;
@@ -197,16 +193,12 @@ public partial class MapOverviewPanel : Control
         var mapRange = _worldMax - _worldMin;
         if (mapRange.X < 1f || mapRange.Y < 1f) return;
 
-        // 计算可用高度
         float maxDisplayHeight = screenSize.Y - actualTop - actualBottomPadding;
         float innerW = actualWidth - actualInnerPadding * 2f;
-
-        // 根据地图比例计算理想高度
         float idealInnerH = innerW * (mapRange.Y / mapRange.X);
         float finalInnerH = Mathf.Min(idealInnerH, maxDisplayHeight - actualInnerPadding * 2f);
         float finalPanelH = finalInnerH + actualInnerPadding * 2f;
 
-        // 应用计算后的布局位置
         Position = new Vector2(actualLeft, actualTop);
         Size = new Vector2(actualWidth, finalPanelH);
 
@@ -215,7 +207,6 @@ public partial class MapOverviewPanel : Control
         _svc.Size = new Vector2(innerW, finalInnerH);
         _sv.Size = (Vector2I)_svc.Size;
 
-        // 更新地图渲染缩放
         _scale = Mathf.Min(innerW / mapRange.X, finalInnerH / mapRange.Y);
 
         ModLogger.Info($"ApplyLayout: Screen={screenSize.X}x{screenSize.Y}, GuiScale={guiScale:F2}, PanelWidth={actualWidth}");
@@ -230,35 +221,82 @@ public partial class MapOverviewPanel : Control
 
     private void SetupCanvas()
     {
-        if (_mapContainer == null) return;
+        if (_mapContainer == null || _mapScreen == null) return;
         try
         {
+            // ── 步骤1：把 TheMap 移入专属 CanvasLayer，获得独立 Canvas ──
+            _mapOriginalParent = _mapContainer.GetParent();
+            _mapOriginalIndex = _mapContainer.GetIndex();
+
+            // layer=0 使坐标系与普通 Control 一致，不影响游戏内鼠标/坐标计算
+            _mapCanvasLayer = new CanvasLayer
+            {
+                Name = "BetterMapCanvasLayer",
+                Layer = 0,
+            };
+            _mapScreen.AddChild(_mapCanvasLayer);
+
+            // keep_global_transform=true：保持 TheMap 视觉位置不变
+            _mapContainer.Reparent(_mapCanvasLayer, true);
+
+            ModLogger.Info($"SetupCanvas: TheMap reparented，new canvas={_mapContainer.GetCanvas()}");
+
+            // ── 步骤2：把独立 Canvas 挂到 SubViewport ──
             _svRid = _sv.GetViewportRid();
-            _originalCanvasRid = _mapContainer.GetCanvas();
+            _mapCanvasRid = _mapContainer.GetCanvas();
 
-            if (!_svRid.IsValid || !_originalCanvasRid.IsValid) return;
+            ModLogger.Info($"SetupCanvas: svRid={_svRid} mapCanvasRid={_mapCanvasRid}");
 
-            RenderingServer.ViewportAttachCanvas(_svRid, _originalCanvasRid);
+            if (!_svRid.IsValid || !_mapCanvasRid.IsValid)
+            {
+                ModLogger.Warn("SetupCanvas: RID 无效，跳过");
+                return;
+            }
+
+            RenderingServer.ViewportAttachCanvas(_svRid, _mapCanvasRid);
 
             var svSize = new Vector2(_sv.Size.X, _sv.Size.Y);
             var mapRange = _worldMax - _worldMin;
-            float scaleX = svSize.X / mapRange.X;
-            float scaleY = svSize.Y / mapRange.Y;
-            _scale = Mathf.Min(scaleX, scaleY);
+            _scale = Mathf.Min(svSize.X / mapRange.X, svSize.Y / mapRange.Y);
 
             _canvasReady = true;
             SyncTransform();
-            // 删除了 SetupVisibilityLayers 调用
 
             ModLogger.Info($"SetupCanvas: scale={_scale:F4} 完成");
         }
         catch (System.Exception ex)
         {
-            ModLogger.Error($"SetupCanvas 异常: {ex.Message}");
+            ModLogger.Error($"SetupCanvas 异常: {ex}");
         }
     }
 
-    // 指示框也需要适配新的比例
+    private void RestoreMapToOriginalParent()
+    {
+        if (_mapContainer == null || !GodotObject.IsInstanceValid(_mapContainer)) return;
+        if (_mapOriginalParent == null || !GodotObject.IsInstanceValid(_mapOriginalParent)) return;
+        if (_mapContainer.GetParent() == _mapOriginalParent) return;
+
+        try
+        {
+            _mapContainer.Reparent(_mapOriginalParent, true);
+            _mapOriginalParent.MoveChild(_mapContainer, _mapOriginalIndex);
+            ModLogger.Info("RestoreMapToOriginalParent: 还原完成");
+        }
+        catch (System.Exception ex)
+        {
+            ModLogger.Error($"RestoreMapToOriginalParent 异常: {ex.Message}");
+        }
+        finally
+        {
+            if (_mapCanvasLayer != null && GodotObject.IsInstanceValid(_mapCanvasLayer))
+            {
+                _mapCanvasLayer.QueueFree();
+                _mapCanvasLayer = null;
+            }
+            _mapOriginalParent = null;
+        }
+    }
+
     private void UpdateViewportIndicator()
     {
         if (_viewportIndicator == null || _mapScreen == null || _mapContainer == null) return;
@@ -266,31 +304,25 @@ public partial class MapOverviewPanel : Control
         var svcSize = _svc.Size;
         var mapRange = _worldMax - _worldMin;
 
-        // 使用当前的全局缩放
         float miniScale = _scale;
         float offX = (svcSize.X - mapRange.X * miniScale) * 0.5f;
         float offY = (svcSize.Y - mapRange.Y * miniScale) * 0.5f;
 
         float visTop = -_mapContainer.Position.Y;
-        float visBot = visTop + _mapScreen.Size.Y;
 
-        float left = offX; // 既然黑框和地图一样宽了，left基本就是offX
+        float left = offX;
         float top = (visTop - _worldMin.Y) * miniScale + offY;
         float w = mapRange.X * miniScale;
-        float h = (_mapScreen.Size.Y) * miniScale;
+        float h = _mapScreen.Size.Y * miniScale;
 
-        // 裁剪到视口内
         float drawTop = Mathf.Max(top, 0);
         float drawBot = Mathf.Min(top + h, svcSize.Y);
         float drawH = Mathf.Max(drawBot - drawTop, 0);
 
         _viewportIndicator.Position = new Vector2(left, drawTop);
         _viewportIndicator.Size = new Vector2(w, drawH);
-
-        // 如果指示框超出了视口（说明那部分地图不在当前显示的面板里），隐藏它或裁剪
         _viewportIndicator.Visible = drawH > 0;
     }
-
 
     private void ComputeWorldBounds(NMapScreen screen)
     {
