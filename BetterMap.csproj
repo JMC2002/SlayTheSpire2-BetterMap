@@ -20,7 +20,7 @@
     <ModLocalDir>$(ProjectDir)$(ModName)</ModLocalDir>
 
     <!-- 定义发布文件夹路径 -->
-    <PublishDir>$(ModLocalDir)\publish</PublishDir>
+    <PublishDir>$(ModLocalDir)\modPublish</PublishDir>
 
     <!-- 游戏最终加载的 mods 目录 -->
     <ModGameDir>$(Sts2Path)\mods\$(ModName)</ModGameDir>
@@ -33,7 +33,7 @@
     <Reference Include="0Harmony" HintPath="$(Sts2DataDir)\0Harmony.dll" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="BetterMap\publish\" />
+    <Folder Include="BetterMap\modPublish\" />
   </ItemGroup>
 
   <!-- ======================================================== -->
@@ -116,23 +116,15 @@ texture_format/etc2=false
     <!-- 调用 Godot 打包 PCK -->
     <Message Text="[2/3] 调用 Godot 打包 PCK..." Importance="High" />
     <!-- WorkingDirectory 是 BetterMap，输出是 publish\BetterMap.pck -->
-    <Exec Command="&quot;$(GodotExe)&quot; --headless --export-pack &quot;Windows Desktop&quot; &quot;publish\$(ModName).pck&quot;"
-          WorkingDirectory="$(ModLocalDir)"
-          StdOutEncoding="utf-8"
-          StdErrEncoding="utf-8"
-          EnvironmentVariables="NO_COLOR=1"
-          Condition="Exists('$(GodotExe)') And Exists('$(ModLocalDir)\export_presets.cfg')" />
+    <Exec Command="&quot;$(GodotExe)&quot; --headless --export-pack &quot;Windows Desktop&quot; &quot;publish\$(ModName).pck&quot;" WorkingDirectory="$(ModLocalDir)" StdOutEncoding="utf-8" StdErrEncoding="utf-8" EnvironmentVariables="NO_COLOR=1" Condition="Exists('$(GodotExe)') And Exists('$(ModLocalDir)\export_presets.cfg')" />
 
-    <Warning Text="⚠️ 未找到 Godot 或 export_presets.cfg，已跳过 PCK 打包。"
-             Condition="!Exists('$(GodotExe)') Or !Exists('$(ModLocalDir)\export_presets.cfg')" />
+    <Warning Text="⚠️ 未找到 Godot 或 export_presets.cfg，已跳过 PCK 打包。" Condition="!Exists('$(GodotExe)') Or !Exists('$(ModLocalDir)\export_presets.cfg')" />
 
     <!-- 将发布内容同步到游戏目录 -->
     <Message Text="[3/3] 同步发布内容 (仅 DLL 和 PCK) 到游戏目录: $(ModGameDir)" Importance="High" />
     <MakeDir Directories="$(ModGameDir)" />
 
-    <Exec Command="robocopy &quot;$(PublishDir)\.&quot; &quot;$(ModGameDir)\.&quot; /E /XO /R:2 /W:2"
-          IgnoreExitCode="true"
-          StandardOutputImportance="Low">
+    <Exec Command="robocopy &quot;$(PublishDir)\.&quot; &quot;$(ModGameDir)\.&quot; /E /XO /R:2 /W:2" IgnoreExitCode="true" StandardOutputImportance="Low">
       <Output TaskParameter="ExitCode" PropertyName="RoboExitCode" />
     </Exec>
 

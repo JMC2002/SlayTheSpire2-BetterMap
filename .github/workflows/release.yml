@@ -137,7 +137,7 @@ jobs:
 
           # 【关键修改】：只将 publish 文件夹下的内容复制到目标文件夹
           # 使用 /. 语法表示复制目录下的内容，而不是目录本身
-          PUBLISH_SRC="${{ env.MOD_PATH }}/publish"
+          PUBLISH_SRC="${{ env.MOD_PATH }}/modPublish"
           if [ -d "$PUBLISH_SRC" ]; then
             cp -r "$PUBLISH_SRC/." "$TARGET_DIR/"
             echo "   ✅ Copied contents from $PUBLISH_SRC"
