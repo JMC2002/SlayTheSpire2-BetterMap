@@ -15,39 +15,11 @@ public partial class MapOverviewPanel : Control
     private const float BaseInnerPad = 3f;
     private const float BgAlpha = 0.88f;
 
-    // ================== Timer 刷新参数 ==================
+    // Timer 刷新频率
     private const double SyncInterval = 1d / 144;
+    // 小地图专属的渲染层 (Bit 1, 值 2)
+    private const uint MinimapLayerBit = 2u;
     // ===============================================================
-
-    // layer=1 → TheMap，CullMask bit=0
-    // layer=2 → 所有需要在TheMap之上的节点
-    private const int LayerMap = 1;
-    private const int LayerAbove = 2;
-    private const uint SvCullMask = 1u << (LayerMap - 1); // = 1u
-
-    // NMapScreen 内需要提升的节点
-    private static readonly string[] MapScreenAboveNames =
-        { "MapLegend", "Back", "DrawingTools", "DrawingToolsHotkey", "ActBanner" };
-
-    // NGlobalUi 内需要提升的节点（排在 NMapScreen 之后、需要显示在地图之上的）
-    private static readonly string[] GlobalUiAboveNames =
-    [
-        "OverlayScreensContainer",
-        "CapstoneScreenContainer",
-        "MultiplayerPlayerContainer",
-        "RelicInventory",
-        "MultiplayerTimeoutOverlay",
-        "TopBar",
-        "AboveTopBarVfxContainer",
-        "CardPreviewContainer",
-        "GridCardPreviewContainer",
-        "EventCardPreviewContainer",
-        "MessyCardPreviewContainer",
-        "FpsVisualizer",
-        "ParticleCounter",
-        "DebugInfo",
-        "TargetManager",
-    ];
 
     private ColorRect _background;
     private SubViewportContainer _svc;
@@ -65,21 +37,12 @@ public partial class MapOverviewPanel : Control
     private Rid _mapCanvasRid;
     private bool _canvasReady;
     private float _scale;
-
-    private CanvasLayer _clMap;    // layer=1，挂在 NMapScreen 下
-    private CanvasLayer _clAbove;  // layer=2，挂在 NGlobalUi 下，容纳所有上层节点
-
-    private Node _mapOrigParent;
-    private int _mapOrigIndex;
-
-    // 还原列表：所有被移动的节点及其原始位置
-    private readonly List<(Node node, Node origParent, int origIndex)> _movedNodes = new();
+    private Vector2 _lastMapPosition = new Vector2(float.NaN, float.NaN);
 
     private static readonly FieldInfo DictField =
         typeof(NMapScreen).GetField("_mapPointDictionary",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
-    // ──────────────────────────────────────────────────────────────
     public static MapOverviewPanel Create() =>
         new() { Name = "BetterMapOverviewPanel", Visible = false };
 
@@ -90,7 +53,6 @@ public partial class MapOverviewPanel : Control
 
         AnchorLeft = AnchorTop = AnchorRight = AnchorBottom = 0f;
         MouseFilter = MouseFilterEnum.Ignore;
-        ProcessMode = ProcessModeEnum.Always;
 
         _background = new ColorRect
         {
@@ -116,7 +78,8 @@ public partial class MapOverviewPanel : Control
             HandleInputLocally = false,
             RenderTargetClearMode = SubViewport.ClearMode.Always,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-            CanvasCullMask = SvCullMask,
+
+            CanvasCullMask = MinimapLayerBit,
         };
         _svc.AddChild(_sv);
 
@@ -125,11 +88,9 @@ public partial class MapOverviewPanel : Control
             Name = "ViewportIndicator",
             Color = new Color(1f, 1f, 1f, 0.18f),
             MouseFilter = MouseFilterEnum.Ignore,
-            ZIndex = 10,
         };
         _svc.AddChild(_viewportIndicator);
 
-        // 初始化 Timer
         _syncTimer = new Godot.Timer
         {
             Name = "MapSyncTimer",
@@ -139,33 +100,33 @@ public partial class MapOverviewPanel : Control
         };
         _syncTimer.Timeout += OnSyncTimerTimeout;
         AddChild(_syncTimer);
-
-        ModLogger.Info($"EnsureBuilt 完成 SvCullMask={SvCullMask}");
     }
 
     public override void _Ready() { EnsureBuilt(); ApplyLayout(); }
-    public override void _ExitTree()
-    {
-        TeardownCanvas();
-    }
-    public override void _Process(double delta) { }
 
-    // ──────────────────────────────────────────────────────────────
+    public override void _ExitTree() { TeardownCanvas(); }
+
     public void BuildOverview(NMapScreen screen)
     {
         EnsureBuilt();
         _mapScreen = screen;
         _mapContainer = screen.GetNodeOrNull<Control>("TheMap");
-        if (_mapContainer == null) { ModLogger.Warn("BuildOverview: 找不到 TheMap"); return; }
+        if (_mapContainer == null) return;
         ComputeWorldBounds(screen);
-        ModLogger.Info($"BuildOverview: worldMin={_worldMin} worldMax={_worldMax}");
     }
 
     public void ShowPanel()
     {
         EnsureBuilt();
         Visible = true;
-        Callable.From(DeferredShow).CallDeferred();
+        _lastMapPosition = new Vector2(float.NaN, float.NaN);
+        ApplyLayout();
+        SetupCanvas();
+
+        // 开启通道：赋予地图本身以及所有父节点第 2 层可见性
+        EnableMinimapVisibility();
+
+        _syncTimer.Start();
     }
 
     public void HidePanel()
@@ -174,58 +135,16 @@ public partial class MapOverviewPanel : Control
         TeardownCanvas();
     }
 
-    // ──────────────────────────────────────────────────────────────
-    private void DeferredShow()
-    {
-        ApplyLayout();
-        SetupCanvas();
-    }
-
     private void SetupCanvas()
     {
         if (_canvasReady || _mapContainer == null || _mapScreen == null) return;
 
         try
         {
-            var globalUi = _mapScreen.GetParent(); // NGlobalUi
-
-            _clMap = new CanvasLayer { Name = "BM_LayerMap", Layer = LayerMap };
-            _mapScreen.AddChild(_clMap);
-
-            _clAbove = new CanvasLayer { Name = "BM_LayerAbove", Layer = LayerAbove };
-            globalUi.AddChild(_clAbove);
-
-            _mapOrigParent = _mapContainer.GetParent();
-            _mapOrigIndex = _mapContainer.GetIndex();
-            _mapContainer.Reparent(_clMap, keepGlobalTransform: true);
-
-            _movedNodes.Clear();
-            MoveNodesToAbove(_mapScreen, MapScreenAboveNames);
-
-            MoveNodesToAbove(globalUi, GlobalUiAboveNames);
-
-            var game = _mapScreen.GetTree().Root.GetNodeOrNull<Node>("Game");
-            if (game != null)
-                MoveNodesToAbove(game, [
-                    "InspectionContainer",
-                    "RemoteCursorContainer",
-                    "ReactionWheel",
-                    "ReactionContainer",
-                    "HoverTipsContainer",
-                    "ModalContainer",
-                    "FeedbackScreen",
-                    "GameTransitionRect",
-                ]);
-
-            // ── 5. 附加 Canvas 到 SubViewport ──
             _svRid = _sv.GetViewportRid();
             _mapCanvasRid = _mapContainer.GetCanvas();
 
-            if (!_svRid.IsValid || !_mapCanvasRid.IsValid)
-            {
-                ModLogger.Warn("SetupCanvas: RID 无效");
-                return;
-            }
+            if (!_svRid.IsValid || !_mapCanvasRid.IsValid) return;
 
             RenderingServer.ViewportAttachCanvas(_svRid, _mapCanvasRid);
 
@@ -234,10 +153,7 @@ public partial class MapOverviewPanel : Control
             _scale = Mathf.Min(svSize.X / mapRange.X, svSize.Y / mapRange.Y);
 
             _canvasReady = true;
-            SyncTransform();
-
-            _syncTimer.Start();
-            ModLogger.Info($"SetupCanvas 完成 scale={_scale:F4}");
+            ForceSyncTransform();
         }
         catch (System.Exception ex)
         {
@@ -245,22 +161,9 @@ public partial class MapOverviewPanel : Control
         }
     }
 
-    private void MoveNodesToAbove(Node parent, string[] names)
-    {
-        foreach (var name in names)
-        {
-            var node = parent.GetNodeOrNull<Node>(name);
-            if (node == null) continue;
-            int origIdx = node.GetIndex();
-            _movedNodes.Add((node, parent, origIdx));
-            node.Reparent(_clAbove, keepGlobalTransform: true);
-            ModLogger.Info($"{name} → layer={LayerAbove}");
-        }
-    }
-
     private void TeardownCanvas()
     {
-        _syncTimer?.Stop();
+        if (_syncTimer != null) _syncTimer.Stop();
 
         if (_svRid.IsValid && _mapCanvasRid.IsValid)
         {
@@ -268,52 +171,80 @@ public partial class MapOverviewPanel : Control
             catch (System.Exception ex) { ModLogger.Warn($"RemoveCanvas: {ex.Message}"); }
         }
         _canvasReady = false;
-        RestoreAll();
+
+        DisableMinimapVisibility();
     }
 
-    private void RestoreAll()
+    // =========================================================================
+    // 核心可见性逻辑（打通渲染通道）
+    // =========================================================================
+
+    private void EnableMinimapVisibility()
     {
-        // 逆序还原所有移动的节点
-        for (int i = _movedNodes.Count - 1; i >= 0; i--)
-        {
-            var (node, parent, idx) = _movedNodes[i];
-            if (node == null || !GodotObject.IsInstanceValid(node)) continue;
-            if (parent == null || !GodotObject.IsInstanceValid(parent)) continue;
-            if (node.GetParent() == parent) continue;
-            try
-            {
-                node.Reparent(parent, keepGlobalTransform: true);
-                parent.MoveChild(node, idx);
-            }
-            catch (System.Exception ex) { ModLogger.Warn($"还原 {node.Name}: {ex.Message}"); }
-        }
-        _movedNodes.Clear();
+        if (_mapContainer == null) return;
 
-        // 还原 TheMap
-        if (_mapContainer != null && GodotObject.IsInstanceValid(_mapContainer)
-            && _mapOrigParent != null && GodotObject.IsInstanceValid(_mapOrigParent)
-            && _mapContainer.GetParent() != _mapOrigParent)
-        {
-            try
-            {
-                _mapContainer.Reparent(_mapOrigParent, keepGlobalTransform: true);
-                _mapOrigParent.MoveChild(_mapContainer, _mapOrigIndex);
-            }
-            catch (System.Exception ex) { ModLogger.Warn($"还原 TheMap: {ex.Message}"); }
-        }
-        _mapOrigParent = null;
+        SetVisibilityRecursive(_mapContainer, MinimapLayerBit, true);
 
-        // 销毁 CanvasLayer
-        if (_clAbove != null && GodotObject.IsInstanceValid(_clAbove)) { _clAbove.QueueFree(); _clAbove = null; }
-        if (_clMap != null && GodotObject.IsInstanceValid(_clMap)) { _clMap.QueueFree(); _clMap = null; }
+        Node current = _mapContainer.GetParent();
+        while (current != null && current is CanvasItem ci)
+        {
+            ci.VisibilityLayer |= MinimapLayerBit; // 添加标记，不破坏原有的第1层
+            current = current.GetParent();
+        }
     }
 
-    // ──────────────────────────────────────────────────────────────
-    public void SyncTransform()
+    private void DisableMinimapVisibility()
     {
-        if (!_canvasReady || !_svRid.IsValid || !_mapCanvasRid.IsValid) return;
+        if (_mapContainer == null) return;
+
+        // 撤销地图及其子节点的通行证
+        SetVisibilityRecursive(_mapContainer, MinimapLayerBit, false);
+
+        // 撤销祖先节点的通行证
+        Node current = _mapContainer.GetParent();
+        while (current != null && current is CanvasItem ci)
+        {
+            ci.VisibilityLayer &= ~MinimapLayerBit;
+            current = current.GetParent();
+        }
+    }
+
+    private static void SetVisibilityRecursive(Node node, uint bitMask, bool enable)
+    {
+        if (node == null || !GodotObject.IsInstanceValid(node)) return;
+
+        if (node is CanvasItem ci)
+        {
+            if (enable) ci.VisibilityLayer |= bitMask;
+            else ci.VisibilityLayer &= ~bitMask;
+        }
+
+        int childCount = node.GetChildCount();
+        for (int i = 0; i < childCount; i++)
+        {
+            SetVisibilityRecursive(node.GetChild(i), bitMask, enable);
+        }
+    }
+
+    // =========================================================================
+    // 同步与布局逻辑
+    // =========================================================================
+
+    private void OnSyncTimerTimeout()
+    {
+        if (!Visible || !_canvasReady) return;
         if (_mapContainer == null || !GodotObject.IsInstanceValid(_mapContainer)) return;
 
+        var currentPos = _mapContainer.GlobalPosition;
+        if (currentPos.IsEqualApprox(_lastMapPosition)) return;
+
+        _lastMapPosition = currentPos;
+        ForceSyncTransform();
+        UpdateViewportIndicator();
+    }
+
+    private void ForceSyncTransform()
+    {
         var svSize = new Vector2(_sv.Size.X, _sv.Size.Y);
         var mapRange = _worldMax - _worldMin;
         float offsetX = (svSize.X - mapRange.X * _scale) * 0.5f;
@@ -329,15 +260,6 @@ public partial class MapOverviewPanel : Control
         RenderingServer.ViewportSetCanvasTransform(_svRid, _mapCanvasRid, t);
     }
 
-    private void OnSyncTimerTimeout()
-    {
-        if (!Visible || !_canvasReady) return;
-        if (_mapContainer == null || !GodotObject.IsInstanceValid(_mapContainer)) return;
-        SyncTransform();
-        UpdateViewportIndicator();
-    }
-
-    // ──────────────────────────────────────────────────────────────
     private void ApplyLayout()
     {
         if (_background == null || _svc == null) return;
@@ -383,6 +305,7 @@ public partial class MapOverviewPanel : Control
         float top = (visTop - _worldMin.Y) * _scale + offY;
         float w = mapRange.X * _scale;
         float h = _mapScreen.Size.Y * _scale;
+
         float drawTop = Mathf.Max(top, 0);
         float drawBot = Mathf.Min(top + h, svcSize.Y);
         float drawH = Mathf.Max(drawBot - drawTop, 0);

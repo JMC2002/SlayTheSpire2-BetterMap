@@ -9,7 +9,6 @@ namespace BetterMap.Patches;
 public static class NMapScreenPatch
 {
     private static MapOverviewPanel _panel;
-    private static CanvasLayer _panelLayer;
 
     private static bool IsValid(GodotObject obj)
     {
@@ -21,29 +20,23 @@ public static class NMapScreenPatch
     {
         if (_panel != null && IsValid(_panel)) return _panel;
 
-        var globalUi = screen.GetParent(); // NGlobalUi
-
-        _panelLayer = new CanvasLayer
-        {
-            Name = "BetterMap_PanelLayer",
-            Layer = 2,
-        };
-
-        // 挂到 NGlobalUi 下，AddChild 默认加到最后
-        // _clAbove 是在 SetupCanvas 里动态创建并 AddChild 的，
-        // 所以 _panelLayer 先加入，_clAbove 后加入，
-        // 同 layer=2 内 _clAbove 排在后面 → 后渲染 → 覆盖我们的小地图
-        globalUi.AddChild(_panelLayer);
-
         _panel = MapOverviewPanel.Create();
-        _panelLayer.AddChild(_panel);
+        
+        screen.AddChild(_panel);
 
-        ModLogger.Info($"MapOverviewPanel 挂载到 NGlobalUi 下 CanvasLayer(layer=2)");
+        var mapContainer = screen.GetNodeOrNull<Control>("TheMap");
+        if (mapContainer != null)
+        {
+            screen.MoveChild(_panel, mapContainer.GetIndex() + 1);
+        }
+
+        ModLogger.Info($"MapOverviewPanel 已挂载到 NMapScreen 内部");
 
         _panel.EnsureBuilt();
         return _panel;
     }
 
+    // SetMap 完成后重建全景图
     [HarmonyPatch(nameof(NMapScreen.SetMap))]
     [HarmonyPostfix]
     public static void SetMap_Postfix(NMapScreen __instance)
@@ -59,6 +52,7 @@ public static class NMapScreenPatch
         }
     }
 
+    // Open 后显示面板
     [HarmonyPatch(nameof(NMapScreen.Open))]
     [HarmonyPostfix]
     public static void Open_Postfix(NMapScreen __instance)
@@ -74,6 +68,7 @@ public static class NMapScreenPatch
         }
     }
 
+    // Close 后隐藏面板
     [HarmonyPatch(nameof(NMapScreen.Close))]
     [HarmonyPostfix]
     public static void Close_Postfix(NMapScreen __instance)
