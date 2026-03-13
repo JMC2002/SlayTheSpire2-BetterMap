@@ -12,10 +12,42 @@ public partial class MapOverviewPanel : Control
     private const float BaseLeft = 100f;
     private const float BaseTop = 150f;
     private const float BaseWidth = 280f;
-    private const float BaseBottomPadding = 60f;
-    private const float BaseInnerPadding = 6f;
+    private const float BaseBottomPad = 60f;
+    private const float BaseInnerPad = 6f;
     private const float BgAlpha = 0.88f;
     // ===============================================================
+
+    // layer=1 → TheMap，CullMask bit=0
+    // layer=2 → 所有需要在TheMap之上的节点
+    private const int LayerMap = 1;
+    private const int LayerAbove = 2;
+    private const uint SvCullMask = 1u << (LayerMap - 1); // = 1u
+
+    // NMapScreen 内需要提升的节点
+    private static readonly string[] MapScreenAboveNames =
+        { "MapLegend", "Back", "DrawingTools", "DrawingToolsHotkey", "ActBanner" };
+
+    // NGlobalUi 内需要提升的节点（排在 NMapScreen 之后、需要显示在地图之上的）
+    // 根据之前日志：index 0=OverlayScreensContainer 在 NMapScreen 之前，index 2以后在之后
+    // 全部提升到 layer=2 保险
+    private static readonly string[] GlobalUiAboveNames =
+    {
+        "OverlayScreensContainer",
+        "CapstoneScreenContainer",
+        "MultiplayerPlayerContainer",
+        "RelicInventory",
+        "MultiplayerTimeoutOverlay",
+        "TopBar",
+        "AboveTopBarVfxContainer",
+        "CardPreviewContainer",
+        "GridCardPreviewContainer",
+        "EventCardPreviewContainer",
+        "MessyCardPreviewContainer",
+        "FpsVisualizer",
+        "ParticleCounter",
+        "DebugInfo",
+        "TargetManager",
+    };
 
     private ColorRect _background;
     private SubViewportContainer _svc;
@@ -33,16 +65,20 @@ public partial class MapOverviewPanel : Control
     private bool _canvasReady;
     private float _scale;
 
-    // 为 TheMap 创建的专属 CanvasLayer
-    private CanvasLayer _mapCanvasLayer;
-    // TheMap 的原始父节点和索引，用于还原
-    private Node _mapOriginalParent;
-    private int _mapOriginalIndex;
+    private CanvasLayer _clMap;    // layer=1，挂在 NMapScreen 下
+    private CanvasLayer _clAbove;  // layer=2，挂在 NGlobalUi 下，容纳所有上层节点
+
+    private Node _mapOrigParent;
+    private int _mapOrigIndex;
+
+    // 还原列表：所有被移动的节点及其原始位置
+    private readonly List<(Node node, Node origParent, int origIndex)> _movedNodes = new();
 
     private static readonly FieldInfo DictField =
         typeof(NMapScreen).GetField("_mapPointDictionary",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
+    // ──────────────────────────────────────────────────────────────
     public static MapOverviewPanel Create() =>
         new() { Name = "BetterMapOverviewPanel", Visible = false };
 
@@ -50,7 +86,6 @@ public partial class MapOverviewPanel : Control
     {
         if (_built) return;
         _built = true;
-        ModLogger.Info("MapOverviewPanel.EnsureBuilt()");
 
         AnchorLeft = AnchorTop = AnchorRight = AnchorBottom = 0f;
         MouseFilter = MouseFilterEnum.Ignore;
@@ -80,7 +115,7 @@ public partial class MapOverviewPanel : Control
             HandleInputLocally = false,
             RenderTargetClearMode = SubViewport.ClearMode.Always,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-            CanvasCullMask = 0xffffffff,
+            CanvasCullMask = SvCullMask,
         };
         _svc.AddChild(_sv);
 
@@ -94,23 +129,18 @@ public partial class MapOverviewPanel : Control
         _svc.AddChild(_viewportIndicator);
 
         RenderingServer.FramePostDraw += OnFramePostDraw;
-        ModLogger.Info("MapOverviewPanel.EnsureBuilt() 完成");
+        ModLogger.Info($"EnsureBuilt 完成 SvCullMask={SvCullMask}");
     }
 
-    public override void _Ready()
-    {
-        EnsureBuilt();
-        ApplyLayout();
-    }
-
+    public override void _Ready() { EnsureBuilt(); ApplyLayout(); }
     public override void _ExitTree()
     {
         RenderingServer.FramePostDraw -= OnFramePostDraw;
-        RestoreMapToOriginalParent();
+        TeardownCanvas();
     }
-
     public override void _Process(double delta) { }
 
+    // ──────────────────────────────────────────────────────────────
     public void BuildOverview(NMapScreen screen)
     {
         EnsureBuilt();
@@ -126,19 +156,140 @@ public partial class MapOverviewPanel : Control
         EnsureBuilt();
         Visible = true;
         Callable.From(DeferredShow).CallDeferred();
-        ModLogger.Info("MapOverviewPanel ShowPanel");
     }
 
     public void HidePanel()
     {
         Visible = false;
-        if (_svRid.IsValid && _mapCanvasRid.IsValid)
-            RenderingServer.ViewportRemoveCanvas(_svRid, _mapCanvasRid);
-        _canvasReady = false;
-        RestoreMapToOriginalParent();
-        ModLogger.Info("MapOverviewPanel HidePanel");
+        TeardownCanvas();
     }
 
+    // ──────────────────────────────────────────────────────────────
+    private void DeferredShow()
+    {
+        ApplyLayout();
+        SetupCanvas();
+    }
+
+    private void SetupCanvas()
+    {
+        if (_canvasReady || _mapContainer == null || _mapScreen == null) return;
+
+        try
+        {
+            var globalUi = _mapScreen.GetParent(); // NGlobalUi
+
+            // ── 1. 创建 CanvasLayer 节点 ──
+            // _clMap 挂在 NMapScreen 下（坐标系与 TheMap 一致）
+            _clMap = new CanvasLayer { Name = "BM_LayerMap", Layer = LayerMap };
+            _mapScreen.AddChild(_clMap);
+
+            // _clAbove 挂在 NGlobalUi 下（覆盖整个 UI 层）
+            _clAbove = new CanvasLayer { Name = "BM_LayerAbove", Layer = LayerAbove };
+            globalUi.AddChild(_clAbove);
+
+            // ── 2. TheMap → layer=1 ──
+            _mapOrigParent = _mapContainer.GetParent();
+            _mapOrigIndex = _mapContainer.GetIndex();
+            _mapContainer.Reparent(_clMap, keepGlobalTransform: true);
+            ModLogger.Info($"TheMap → layer={LayerMap}, canvas={_mapContainer.GetCanvas()}");
+
+            // ── 3. NMapScreen 内上层UI → layer=2 ──
+            _movedNodes.Clear();
+            MoveNodesToAbove(_mapScreen, MapScreenAboveNames);
+
+            // ── 4. NGlobalUi 内其他上层节点 → layer=2 ──
+            MoveNodesToAbove(globalUi, GlobalUiAboveNames);
+
+            // ── 5. 附加 Canvas 到 SubViewport ──
+            _svRid = _sv.GetViewportRid();
+            _mapCanvasRid = _mapContainer.GetCanvas();
+
+            if (!_svRid.IsValid || !_mapCanvasRid.IsValid)
+            {
+                ModLogger.Warn("SetupCanvas: RID 无效");
+                return;
+            }
+
+            RenderingServer.ViewportAttachCanvas(_svRid, _mapCanvasRid);
+
+            var svSize = new Vector2(_sv.Size.X, _sv.Size.Y);
+            var mapRange = _worldMax - _worldMin;
+            _scale = Mathf.Min(svSize.X / mapRange.X, svSize.Y / mapRange.Y);
+
+            _canvasReady = true;
+            SyncTransform();
+            ModLogger.Info($"SetupCanvas 完成 scale={_scale:F4}");
+        }
+        catch (System.Exception ex)
+        {
+            ModLogger.Error($"SetupCanvas 异常: {ex}");
+        }
+    }
+
+    private void MoveNodesToAbove(Node parent, string[] names)
+    {
+        foreach (var name in names)
+        {
+            var node = parent.GetNodeOrNull<Node>(name);
+            if (node == null) continue;
+            int origIdx = node.GetIndex();
+            _movedNodes.Add((node, parent, origIdx));
+            node.Reparent(_clAbove, keepGlobalTransform: true);
+            ModLogger.Info($"{name} → layer={LayerAbove}");
+        }
+    }
+
+    private void TeardownCanvas()
+    {
+        if (_svRid.IsValid && _mapCanvasRid.IsValid)
+        {
+            try { RenderingServer.ViewportRemoveCanvas(_svRid, _mapCanvasRid); }
+            catch (System.Exception ex) { ModLogger.Warn($"RemoveCanvas: {ex.Message}"); }
+        }
+        _canvasReady = false;
+        RestoreAll();
+    }
+
+    private void RestoreAll()
+    {
+        // 逆序还原所有移动的节点
+        for (int i = _movedNodes.Count - 1; i >= 0; i--)
+        {
+            var (node, parent, idx) = _movedNodes[i];
+            if (node == null || !GodotObject.IsInstanceValid(node)) continue;
+            if (parent == null || !GodotObject.IsInstanceValid(parent)) continue;
+            if (node.GetParent() == parent) continue;
+            try
+            {
+                node.Reparent(parent, keepGlobalTransform: true);
+                parent.MoveChild(node, idx);
+            }
+            catch (System.Exception ex) { ModLogger.Warn($"还原 {node.Name}: {ex.Message}"); }
+        }
+        _movedNodes.Clear();
+
+        // 还原 TheMap
+        if (_mapContainer != null && GodotObject.IsInstanceValid(_mapContainer)
+            && _mapOrigParent != null && GodotObject.IsInstanceValid(_mapOrigParent)
+            && _mapContainer.GetParent() != _mapOrigParent)
+        {
+            try
+            {
+                _mapContainer.Reparent(_mapOrigParent, keepGlobalTransform: true);
+                _mapOrigParent.MoveChild(_mapContainer, _mapOrigIndex);
+                ModLogger.Info("TheMap 还原完成");
+            }
+            catch (System.Exception ex) { ModLogger.Warn($"还原 TheMap: {ex.Message}"); }
+        }
+        _mapOrigParent = null;
+
+        // 销毁 CanvasLayer
+        if (_clAbove != null && GodotObject.IsInstanceValid(_clAbove)) { _clAbove.QueueFree(); _clAbove = null; }
+        if (_clMap != null && GodotObject.IsInstanceValid(_clMap)) { _clMap.QueueFree(); _clMap = null; }
+    }
+
+    // ──────────────────────────────────────────────────────────────
     public void SyncTransform()
     {
         if (!_canvasReady || !_svRid.IsValid || !_mapCanvasRid.IsValid) return;
@@ -146,12 +297,10 @@ public partial class MapOverviewPanel : Control
 
         var svSize = new Vector2(_sv.Size.X, _sv.Size.Y);
         var mapRange = _worldMax - _worldMin;
-
         float offsetX = (svSize.X - mapRange.X * _scale) * 0.5f;
         float offsetY = (svSize.Y - mapRange.Y * _scale) * 0.5f;
 
-        var mp = _mapContainer.Position;
-
+        var mp = _mapContainer.GlobalPosition;
         var t = new Transform2D(
             new Vector2(_scale, 0),
             new Vector2(0, _scale),
@@ -175,6 +324,7 @@ public partial class MapOverviewPanel : Control
         UpdateViewportIndicator();
     }
 
+    // ──────────────────────────────────────────────────────────────
     private void ApplyLayout()
     {
         if (_background == null || _svc == null) return;
@@ -182,119 +332,29 @@ public partial class MapOverviewPanel : Control
         if (vp == null) return;
 
         Vector2 screenSize = vp.GetVisibleRect().Size;
-        float guiScale = screenSize.Y / 1080f;
+        float gs = screenSize.Y / 1080f;
 
-        float actualLeft = BaseLeft * guiScale;
-        float actualTop = BaseTop * guiScale;
-        float actualWidth = BaseWidth * guiScale;
-        float actualBottomPadding = BaseBottomPadding * guiScale;
-        float actualInnerPadding = BaseInnerPadding * guiScale;
+        float left = BaseLeft * gs;
+        float top = BaseTop * gs;
+        float width = BaseWidth * gs;
+        float botPad = BaseBottomPad * gs;
+        float innerPad = BaseInnerPad * gs;
 
         var mapRange = _worldMax - _worldMin;
         if (mapRange.X < 1f || mapRange.Y < 1f) return;
 
-        float maxDisplayHeight = screenSize.Y - actualTop - actualBottomPadding;
-        float innerW = actualWidth - actualInnerPadding * 2f;
-        float idealInnerH = innerW * (mapRange.Y / mapRange.X);
-        float finalInnerH = Mathf.Min(idealInnerH, maxDisplayHeight - actualInnerPadding * 2f);
-        float finalPanelH = finalInnerH + actualInnerPadding * 2f;
+        float maxH = screenSize.Y - top - botPad;
+        float innerW = width - innerPad * 2f;
+        float innerH = Mathf.Min(innerW * (mapRange.Y / mapRange.X), maxH - innerPad * 2f);
+        float panelH = innerH + innerPad * 2f;
 
-        Position = new Vector2(actualLeft, actualTop);
-        Size = new Vector2(actualWidth, finalPanelH);
-
+        Position = new Vector2(left, top);
+        Size = new Vector2(width, panelH);
         _background.Size = Size;
-        _svc.Position = new Vector2(actualInnerPadding, actualInnerPadding);
-        _svc.Size = new Vector2(innerW, finalInnerH);
+        _svc.Position = new Vector2(innerPad, innerPad);
+        _svc.Size = new Vector2(innerW, innerH);
         _sv.Size = (Vector2I)_svc.Size;
-
-        _scale = Mathf.Min(innerW / mapRange.X, finalInnerH / mapRange.Y);
-
-        ModLogger.Info($"ApplyLayout: Screen={screenSize.X}x{screenSize.Y}, GuiScale={guiScale:F2}, PanelWidth={actualWidth}");
-    }
-
-    private void DeferredShow()
-    {
-        ApplyLayout();
-        SetupCanvas();
-        ModLogger.Info("DeferredShow 完成");
-    }
-
-    private void SetupCanvas()
-    {
-        if (_mapContainer == null || _mapScreen == null) return;
-        try
-        {
-            // ── 步骤1：把 TheMap 移入专属 CanvasLayer，获得独立 Canvas ──
-            _mapOriginalParent = _mapContainer.GetParent();
-            _mapOriginalIndex = _mapContainer.GetIndex();
-
-            // layer=0 使坐标系与普通 Control 一致，不影响游戏内鼠标/坐标计算
-            _mapCanvasLayer = new CanvasLayer
-            {
-                Name = "BetterMapCanvasLayer",
-                Layer = 0,
-            };
-            _mapScreen.AddChild(_mapCanvasLayer);
-
-            // keep_global_transform=true：保持 TheMap 视觉位置不变
-            _mapContainer.Reparent(_mapCanvasLayer, true);
-
-            ModLogger.Info($"SetupCanvas: TheMap reparented，new canvas={_mapContainer.GetCanvas()}");
-
-            // ── 步骤2：把独立 Canvas 挂到 SubViewport ──
-            _svRid = _sv.GetViewportRid();
-            _mapCanvasRid = _mapContainer.GetCanvas();
-
-            ModLogger.Info($"SetupCanvas: svRid={_svRid} mapCanvasRid={_mapCanvasRid}");
-
-            if (!_svRid.IsValid || !_mapCanvasRid.IsValid)
-            {
-                ModLogger.Warn("SetupCanvas: RID 无效，跳过");
-                return;
-            }
-
-            RenderingServer.ViewportAttachCanvas(_svRid, _mapCanvasRid);
-
-            var svSize = new Vector2(_sv.Size.X, _sv.Size.Y);
-            var mapRange = _worldMax - _worldMin;
-            _scale = Mathf.Min(svSize.X / mapRange.X, svSize.Y / mapRange.Y);
-
-            _canvasReady = true;
-            SyncTransform();
-
-            ModLogger.Info($"SetupCanvas: scale={_scale:F4} 完成");
-        }
-        catch (System.Exception ex)
-        {
-            ModLogger.Error($"SetupCanvas 异常: {ex}");
-        }
-    }
-
-    private void RestoreMapToOriginalParent()
-    {
-        if (_mapContainer == null || !GodotObject.IsInstanceValid(_mapContainer)) return;
-        if (_mapOriginalParent == null || !GodotObject.IsInstanceValid(_mapOriginalParent)) return;
-        if (_mapContainer.GetParent() == _mapOriginalParent) return;
-
-        try
-        {
-            _mapContainer.Reparent(_mapOriginalParent, true);
-            _mapOriginalParent.MoveChild(_mapContainer, _mapOriginalIndex);
-            ModLogger.Info("RestoreMapToOriginalParent: 还原完成");
-        }
-        catch (System.Exception ex)
-        {
-            ModLogger.Error($"RestoreMapToOriginalParent 异常: {ex.Message}");
-        }
-        finally
-        {
-            if (_mapCanvasLayer != null && GodotObject.IsInstanceValid(_mapCanvasLayer))
-            {
-                _mapCanvasLayer.QueueFree();
-                _mapCanvasLayer = null;
-            }
-            _mapOriginalParent = null;
-        }
+        _scale = Mathf.Min(innerW / mapRange.X, innerH / mapRange.Y);
     }
 
     private void UpdateViewportIndicator()
@@ -303,23 +363,18 @@ public partial class MapOverviewPanel : Control
 
         var svcSize = _svc.Size;
         var mapRange = _worldMax - _worldMin;
+        float offX = (svcSize.X - mapRange.X * _scale) * 0.5f;
+        float offY = (svcSize.Y - mapRange.Y * _scale) * 0.5f;
 
-        float miniScale = _scale;
-        float offX = (svcSize.X - mapRange.X * miniScale) * 0.5f;
-        float offY = (svcSize.Y - mapRange.Y * miniScale) * 0.5f;
-
-        float visTop = -_mapContainer.Position.Y;
-
-        float left = offX;
-        float top = (visTop - _worldMin.Y) * miniScale + offY;
-        float w = mapRange.X * miniScale;
-        float h = _mapScreen.Size.Y * miniScale;
-
+        float visTop = -_mapContainer.GlobalPosition.Y;
+        float top = (visTop - _worldMin.Y) * _scale + offY;
+        float w = mapRange.X * _scale;
+        float h = _mapScreen.Size.Y * _scale;
         float drawTop = Mathf.Max(top, 0);
         float drawBot = Mathf.Min(top + h, svcSize.Y);
         float drawH = Mathf.Max(drawBot - drawTop, 0);
 
-        _viewportIndicator.Position = new Vector2(left, drawTop);
+        _viewportIndicator.Position = new Vector2(offX, drawTop);
         _viewportIndicator.Size = new Vector2(w, drawH);
         _viewportIndicator.Visible = drawH > 0;
     }
@@ -346,8 +401,7 @@ public partial class MapOverviewPanel : Control
             if (p.Y > _worldMax.Y) _worldMax.Y = p.Y;
         }
 
-        var margin = new Vector2(80f, 100f);
-        _worldMin -= margin;
-        _worldMax += margin;
+        _worldMin -= new Vector2(80f, 100f);
+        _worldMax += new Vector2(80f, 100f);
     }
 }

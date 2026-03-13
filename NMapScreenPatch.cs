@@ -9,6 +9,7 @@ namespace BetterMap.Patches;
 public static class NMapScreenPatch
 {
     private static MapOverviewPanel _panel;
+    private static CanvasLayer _panelLayer; // layer=3，始终在所有游戏UI之上
 
     private static bool IsValid(GodotObject obj)
     {
@@ -20,19 +21,25 @@ public static class NMapScreenPatch
     {
         if (_panel != null && IsValid(_panel)) return _panel;
 
-        _panel = MapOverviewPanel.Create();
-
-        // 挂到场景树根节点，完全独立于游戏UI层级
-        // 避免父节点 ProcessMode/Visible 变化影响我们的节点
         var root = screen.GetTree().Root;
-        root.AddChild(_panel);
-        ModLogger.Info($"MapOverviewPanel 挂载到: {root.Name} (SceneTree Root)");
+
+        // 创建专属 CanvasLayer，layer=3 高于游戏所有UI层（layer=0,1,2）
+        _panelLayer = new CanvasLayer
+        {
+            Name = "BetterMap_PanelLayer",
+            Layer = 3,
+        };
+        root.AddChild(_panelLayer);
+
+        _panel = MapOverviewPanel.Create();
+        _panelLayer.AddChild(_panel);
+
+        ModLogger.Info($"MapOverviewPanel 挂载到 CanvasLayer(layer=3) 下");
 
         _panel.EnsureBuilt();
         return _panel;
     }
 
-    // SetMap 完成后重建全景图（地图数据已就绪）
     [HarmonyPatch(nameof(NMapScreen.SetMap))]
     [HarmonyPostfix]
     public static void SetMap_Postfix(NMapScreen __instance)
@@ -48,7 +55,6 @@ public static class NMapScreenPatch
         }
     }
 
-    // Open 后显示面板（数据在 SetMap 时已经建好）
     [HarmonyPatch(nameof(NMapScreen.Open))]
     [HarmonyPostfix]
     public static void Open_Postfix(NMapScreen __instance)
@@ -64,7 +70,6 @@ public static class NMapScreenPatch
         }
     }
 
-    // Close 后隐藏面板
     [HarmonyPatch(nameof(NMapScreen.Close))]
     [HarmonyPostfix]
     public static void Close_Postfix(NMapScreen __instance)
