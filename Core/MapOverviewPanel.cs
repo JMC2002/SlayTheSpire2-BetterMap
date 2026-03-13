@@ -13,7 +13,7 @@ public partial class MapOverviewPanel : Control
     private const float BaseTop = 150f;
     private const float BaseWidth = 280f;
     private const float BaseBottomPad = 60f;
-    private const float BaseInnerPad = 6f;
+    private const float BaseInnerPad = 3f;
     private const float BgAlpha = 0.88f;
     // ===============================================================
 
@@ -201,6 +201,19 @@ public partial class MapOverviewPanel : Control
             // ── 4. NGlobalUi 内其他上层节点 → layer=2 ──
             MoveNodesToAbove(globalUi, GlobalUiAboveNames);
 
+            var game = _mapScreen.GetTree().Root.GetNodeOrNull<Node>("Game");
+            if (game != null)
+                MoveNodesToAbove(game, new[] {
+        "InspectionContainer",
+        "RemoteCursorContainer",
+        "ReactionWheel",
+        "ReactionContainer",
+        "HoverTipsContainer",
+        "ModalContainer",
+        "FeedbackScreen",
+        "GameTransitionRect",
+    });
+
             // ── 5. 附加 Canvas 到 SubViewport ──
             _svRid = _sv.GetViewportRid();
             _mapCanvasRid = _mapContainer.GetCanvas();
@@ -288,7 +301,6 @@ public partial class MapOverviewPanel : Control
         if (_clAbove != null && GodotObject.IsInstanceValid(_clAbove)) { _clAbove.QueueFree(); _clAbove = null; }
         if (_clMap != null && GodotObject.IsInstanceValid(_clMap)) { _clMap.QueueFree(); _clMap = null; }
     }
-
     // ──────────────────────────────────────────────────────────────
     public void SyncTransform()
     {
