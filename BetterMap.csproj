@@ -49,11 +49,11 @@
     <!-- 1. 生成 project.godot -->
     <PropertyGroup Condition="!Exists('$(ModLocalDir)\project.godot')">
       <ProjectGodotText>
-; Engine configuration file.
-config_version=5
+        ; Engine configuration file.
+        config_version=5
 
-[application]
-config/name="$(ModName)"
+        [application]
+        config/name="$(ModName)"
       </ProjectGodotText>
     </PropertyGroup>
     <WriteLinesToFile File="$(ModLocalDir)\project.godot" Lines="$(ProjectGodotText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\project.godot')" />
@@ -61,48 +61,47 @@ config/name="$(ModName)"
     <!-- 2. 生成 export_presets.cfg -->
     <PropertyGroup Condition="!Exists('$(ModLocalDir)\export_presets.cfg')">
       <ExportPresetsText>
-[preset.0]
-name="Windows Desktop"
-platform="Windows Desktop"
-runnable=true
-dedicated_server=false
-custom_features=""
-export_filter="all_resources"
-include_filter="*.json, *.png, *.csv"
-exclude_filter=""
-export_path=""
-encryption_include_filters=""
-encryption_exclude_filters=""
-encrypt_pck=false
-encrypt_directory=false
+        [preset.0]
+        name="Windows Desktop"
+        platform="Windows Desktop"
+        runnable=true
+        dedicated_server=false
+        custom_features=""
+        export_filter="all_resources"
+        include_filter="*.json, *.png, *.csv"
+        exclude_filter=""
+        export_path=""
+        encryption_include_filters=""
+        encryption_exclude_filters=""
+        encrypt_pck=false
+        encrypt_directory=false
 
-[preset.0.options]
-custom_template/debug=""
-custom_template/release=""
-debug/export_console_wrapper=1
-binary_format/embed_pck=false
-texture_format/bptc=true
-texture_format/s3tc=true
-texture_format/etc=false
-texture_format/etc2=false
+        [preset.0.options]
+        custom_template/debug=""
+        custom_template/release=""
+        debug/export_console_wrapper=1
+        binary_format/embed_pck=false
+        texture_format/bptc=true
+        texture_format/s3tc=true
+        texture_format/etc=false
+        texture_format/etc2=false
       </ExportPresetsText>
     </PropertyGroup>
     <WriteLinesToFile File="$(ModLocalDir)\export_presets.cfg" Lines="$(ExportPresetsText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\export_presets.cfg')" />
 
     <!-- 3. 生成 mod_manifest.json -->
-    <PropertyGroup Condition="!Exists('$(ModLocalDir)\mod_manifest.json')">
+    <PropertyGroup Condition="!Exists('$(PublishDir)\mod_manifest.json')">
       <ManifestText>
-{
-    "pck_name": "$(ModName)",
-    "name": "$(ModName)",
-    "author": "JMC",
-    "version": "1.0.0",
-    "description": "$(ModName) Description"
-}
+        {
+        "pck_name": "$(ModName)",
+        "name": "$(ModName)",
+        "author": "JMC",
+        "version": "1.0.0",
+        "description": "$(ModName) Description"
+        }
       </ManifestText>
     </PropertyGroup>
-    <!-- 先生成到暂存区根目录 -->
-    <WriteLinesToFile File="$(ModLocalDir)\mod_manifest.json" Lines="$(ManifestText)" Overwrite="false" Encoding="utf-8" Condition="!Exists('$(ModLocalDir)\mod_manifest.json')" />
+    <WriteLinesToFile File="$(PublishDir)\mod_manifest.json" Lines="$(ManifestText)" Overwrite="false" Encoding="utf-8" Condition="!Exists('$(PublishDir)\mod_manifest.json')" />
   </Target>
 
   <Target Name="BuildAndDeploy" AfterTargets="Build">
@@ -115,13 +114,12 @@ texture_format/etc2=false
 
     <!-- 调用 Godot 打包 PCK -->
     <Message Text="[2/3] 调用 Godot 打包 PCK..." Importance="High" />
-    <!-- WorkingDirectory 是 BetterMap，输出是 publish\BetterMap.pck -->
-    <Exec Command="&quot;$(GodotExe)&quot; --headless --export-pack &quot;Windows Desktop&quot; &quot;publish\$(ModName).pck&quot;" WorkingDirectory="$(ModLocalDir)" StdOutEncoding="utf-8" StdErrEncoding="utf-8" EnvironmentVariables="NO_COLOR=1" Condition="Exists('$(GodotExe)') And Exists('$(ModLocalDir)\export_presets.cfg')" />
+    <Exec Command="&quot;$(GodotExe)&quot; --headless --export-pack &quot;Windows Desktop&quot; &quot;modPublish\$(ModName).pck&quot;" WorkingDirectory="$(ModLocalDir)" StdOutEncoding="utf-8" StdErrEncoding="utf-8" EnvironmentVariables="NO_COLOR=1" Condition="Exists('$(GodotExe)') And Exists('$(ModLocalDir)\export_presets.cfg')" />
 
     <Warning Text="⚠️ 未找到 Godot 或 export_presets.cfg，已跳过 PCK 打包。" Condition="!Exists('$(GodotExe)') Or !Exists('$(ModLocalDir)\export_presets.cfg')" />
 
     <!-- 将发布内容同步到游戏目录 -->
-    <Message Text="[3/3] 同步发布内容 (仅 DLL 和 PCK) 到游戏目录: $(ModGameDir)" Importance="High" />
+    <Message Text="[3/3] 同步发布内容 (DLL, PCK 和 JSON) 到游戏目录: $(ModGameDir)" Importance="High" />
     <MakeDir Directories="$(ModGameDir)" />
 
     <Exec Command="robocopy &quot;$(PublishDir)\.&quot; &quot;$(ModGameDir)\.&quot; /E /XO /R:2 /W:2" IgnoreExitCode="true" StandardOutputImportance="Low">
@@ -134,7 +132,7 @@ texture_format/etc2=false
          >3: 失败 -->
     <Error Condition="$(RoboExitCode) &gt; 3" Text="❌ Robocopy 同步失败（错误代码 $(RoboExitCode)）。请检查：1. 游戏是否已关闭；2. publish 文件夹内是否有文件。" />
 
-    <Message Text="✅ Mod 构建与部署全流程完成！游戏目录现在仅包含 .dll 和 .pck。" Importance="High" />
+    <Message Text="✅ Mod 构建与部署全流程完成！游戏目录现在包含 .dll, .pck 以及 mod_manifest.json。" Importance="High" />
   </Target>
 
   <!-- 弹窗询问启动游戏 -->
