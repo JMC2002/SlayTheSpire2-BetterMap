@@ -1,4 +1,7 @@
-﻿using Godot;
+using Godot;
+using JmcModLib.Config;
+using JmcModLib.Config.UI;
+using JmcModLib.Utils;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using System.Reflection;
@@ -7,9 +10,17 @@ namespace BetterMap.Core;
 
 public partial class MapOverviewPanel : Control
 {
+    private const string LayoutConfigGroup = "地图概览";
+
     // ================== 基准参数 (以 1080P 为基准) ==================
-    private const float BaseLeft = 100f;
-    private const float BaseTop = 150f;
+    [UIFloatSlider(0f, 600f, decimalPlaces: 0)]
+    [Config("小地图左边距", group: LayoutConfigGroup, onChanged: nameof(OnBaseLeftChanged))]
+    public static float BaseLeft = 100f;
+
+    [UIFloatSlider(0f, 600f, decimalPlaces: 0)]
+    [Config("小地图上边距", group: LayoutConfigGroup, onChanged: nameof(OnBaseTopChanged))]
+    public static float BaseTop = 150f;
+
     private const float BaseWidth = 280f;
     private const float BaseBottomPad = 60f;
     private const float BaseInnerPad = 3f;
@@ -20,6 +31,8 @@ public partial class MapOverviewPanel : Control
     // 小地图专属的渲染层 (Bit 1, 值 2)
     private const uint MinimapLayerBit = 2u;
     // ===============================================================
+
+    private static MapOverviewPanel? ActivePanel;
 
     private ColorRect _background;
     private SubViewportContainer _svc;
@@ -37,7 +50,7 @@ public partial class MapOverviewPanel : Control
     private Rid _mapCanvasRid;
     private bool _canvasReady;
     private float _scale;
-    private Vector2 _lastMapPosition = new Vector2(float.NaN, float.NaN);
+    private Vector2 _lastMapPosition = new(float.NaN, float.NaN);
 
     private static readonly FieldInfo DictField =
         typeof(NMapScreen).GetField("_mapPointDictionary",
@@ -78,7 +91,6 @@ public partial class MapOverviewPanel : Control
             HandleInputLocally = false,
             RenderTargetClearMode = SubViewport.ClearMode.Always,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-
             CanvasCullMask = MinimapLayerBit,
         };
         _svc.AddChild(_sv);
@@ -102,9 +114,22 @@ public partial class MapOverviewPanel : Control
         AddChild(_syncTimer);
     }
 
-    public override void _Ready() { EnsureBuilt(); ApplyLayout(); }
+    public override void _Ready()
+    {
+        ActivePanel = this;
+        EnsureBuilt();
+        ApplyLayout();
+    }
 
-    public override void _ExitTree() { TeardownCanvas(); }
+    public override void _ExitTree()
+    {
+        if (ReferenceEquals(ActivePanel, this))
+        {
+            ActivePanel = null;
+        }
+
+        TeardownCanvas();
+    }
 
     public void BuildOverview(NMapScreen screen)
     {
@@ -118,12 +143,12 @@ public partial class MapOverviewPanel : Control
     public void ShowPanel()
     {
         EnsureBuilt();
+        ActivePanel = this;
         Visible = true;
         _lastMapPosition = new Vector2(float.NaN, float.NaN);
         ApplyLayout();
         SetupCanvas();
 
-        // 开启通道：赋予地图本身以及所有父节点第 2 层可见性
         EnableMinimapVisibility();
 
         _syncTimer.Start();
@@ -133,6 +158,27 @@ public partial class MapOverviewPanel : Control
     {
         Visible = false;
         TeardownCanvas();
+    }
+
+    private static void OnBaseLeftChanged(float _)
+    {
+        RefreshActiveLayout();
+    }
+
+    private static void OnBaseTopChanged(float _)
+    {
+        RefreshActiveLayout();
+    }
+
+    private static void RefreshActiveLayout()
+    {
+        if (ActivePanel == null || !GodotObject.IsInstanceValid(ActivePanel))
+        {
+            return;
+        }
+
+        ActivePanel.ApplyLayout();
+        ActivePanel.UpdateViewportIndicator();
     }
 
     private void SetupCanvas()
@@ -188,7 +234,7 @@ public partial class MapOverviewPanel : Control
         Node current = _mapContainer.GetParent();
         while (current != null && current is CanvasItem ci)
         {
-            ci.VisibilityLayer |= MinimapLayerBit; // 添加标记，不破坏原有的第1层
+            ci.VisibilityLayer |= MinimapLayerBit;
             current = current.GetParent();
         }
     }
@@ -197,10 +243,8 @@ public partial class MapOverviewPanel : Control
     {
         if (_mapContainer == null) return;
 
-        // 撤销地图及其子节点的通行证
         SetVisibilityRecursive(_mapContainer, MinimapLayerBit, false);
 
-        // 撤销祖先节点的通行证
         Node current = _mapContainer.GetParent();
         while (current != null && current is CanvasItem ci)
         {

@@ -1,11 +1,11 @@
-﻿{
+{
   "id": "BetterMap",
   "name": "BetterMap",
   "author": "JMC",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "一个小地图，有BUG反馈B站JMC丶或Github，二次分发时必须标注来源",
   "has_pck": true,
   "has_dll": true,
-  "dependencies": [],
+  "dependencies": ["JmcModLib"],
   "affects_gameplay": false
 }

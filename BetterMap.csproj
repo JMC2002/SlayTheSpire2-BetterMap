@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -22,11 +22,14 @@
 
     <!-- 定义发布文件夹路径 -->
     <PublishDir>$(ModLocalDir)\modPublish</PublishDir>
+    <!-- 游戏本地MOD目录 -->
+    <ModDir>$(Sts2Path)\mods</ModDir>
 
     <!-- 游戏最终加载的 mods 目录 -->
-    <ModGameDir>$(Sts2Path)\mods\$(ModName)</ModGameDir>
-
+    <ModGameDir>$(ModDir)\$(ModName)</ModGameDir>
+    <LaunchGamePrompt Condition="'$(LaunchGamePrompt)' == ''">true</LaunchGamePrompt>
   </PropertyGroup>
+  <Import Project="$(ModDir)\JmcModLib\JmcModLib.Sts2.props" />
 
   <ItemGroup>
     <Content Include="$(PublishDir)\$(ModName).json" />
@@ -34,9 +37,18 @@
 
   <!-- 引用游戏 DLL -->
   <ItemGroup>
-    <Reference Include="GodotSharp" HintPath="$(Sts2DataDir)\GodotSharp.dll" Private="false" />
-    <Reference Include="sts2" HintPath="$(Sts2DataDir)\sts2.dll" Private="false" />
-    <Reference Include="0Harmony" HintPath="$(Sts2DataDir)\0Harmony.dll" Private="false" />
+    <Reference Include="GodotSharp">
+      <HintPath>$(Sts2DataDir)\GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="sts2">
+      <HintPath>$(Sts2DataDir)\sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(Sts2DataDir)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- ======================================================== -->
@@ -44,12 +56,10 @@
   <!-- ======================================================== -->
 
   <Target Name="EnsureGodotProjectFiles" BeforeTargets="BuildAndDeploy">
-    <Message Text="🔍 检查并补全暂存区 Godot 配置文件..." Importance="High" />
-    <!-- 确保暂存区文件夹存在 -->
+    <Message Text="检查并补全暂存区 Godot 配置文件..." Importance="High" />
     <MakeDir Directories="$(ModLocalDir)" />
     <MakeDir Directories="$(PublishDir)" />
 
-    <!-- 1. 生成 project.godot -->
     <PropertyGroup Condition="!Exists('$(ModLocalDir)\project.godot')">
       <ProjectGodotText>
 ; Engine configuration file.
@@ -59,9 +69,8 @@ config_version=5
 config/name="$(ModName)"
       </ProjectGodotText>
     </PropertyGroup>
-    <WriteLinesToFile File="$(ModLocalDir)\project.godot" Lines="$(ProjectGodotText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\project.godot')" />
+<WriteLinesToFile File="$(ModLocalDir)\project.godot" Lines="$(ProjectGodotText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\project.godot')" />
 
-    <!-- 2. 生成 export_presets.cfg -->
     <PropertyGroup Condition="!Exists('$(ModLocalDir)\export_presets.cfg')">
       <ExportPresetsText>
 [preset.0]
@@ -90,9 +99,8 @@ texture_format/etc=false
 texture_format/etc2=false
       </ExportPresetsText>
     </PropertyGroup>
-    <WriteLinesToFile File="$(ModLocalDir)\export_presets.cfg" Lines="$(ExportPresetsText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\export_presets.cfg')" />
+<WriteLinesToFile File="$(ModLocalDir)\export_presets.cfg" Lines="$(ExportPresetsText)" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(ModLocalDir)\export_presets.cfg')" />
 
-    <!-- 3. 生成 mod_manifest.json -->
     <PropertyGroup Condition="!Exists('$(PublishDir)\$(ModName).json')">
       <ManifestText>
 {
@@ -103,28 +111,23 @@ texture_format/etc2=false
     "description": "$(ModName) Description",
     "has_pck": true,
     "has_dll": true,
-    "dependencies": [],
+    "dependencies": ["JmcModLib"],
     "affects_gameplay": false
 }
       </ManifestText>
     </PropertyGroup>
-    <WriteLinesToFile File="$(PublishDir)\$(ModName).json" Lines="$(ManifestText)" Overwrite="false" Encoding="utf-8" Condition="!Exists('$(PublishDir)\$(ModName).json')" />
+<WriteLinesToFile File="$(PublishDir)\$(ModName).json" Lines="$(ManifestText)" Overwrite="false" Encoding="utf-8" Condition="!Exists('$(PublishDir)\$(ModName).json')" />
   </Target>
 
-  <!-- 2. 构建与部署 -->
   <Target Name="BuildAndDeploy" AfterTargets="Build">
     <MakeDir Directories="$(PublishDir)" />
 
     <Message Text="[1/4] 准备 DLL..." Importance="High" />
-
-    <!-- [2/4] 复制 DLL 到发布区 -->
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PublishDir)" />
 
-    <!-- [3/4] 调用 Godot 打包 PCK -->
     <Message Text="[2/4] 调用 Godot 打包 PCK (工作目录: $(ModLocalDir))..." Importance="High" />
     <Exec Command="&quot;$(GodotExe)&quot; --headless --export-pack &quot;Windows Desktop&quot; &quot;modPublish\$(ModName).pck&quot;" WorkingDirectory="$(ModLocalDir)" StdOutEncoding="utf-8" StdErrEncoding="utf-8" EnvironmentVariables="NO_COLOR=1" Condition="Exists('$(GodotExe)') And Exists('$(ModLocalDir)\export_presets.cfg')" />
 
-    <!-- 将发布内容同步到游戏目录 -->
     <Message Text="[3/4] 同步所有文件到游戏目录..." Importance="High" />
     <MakeDir Directories="$(ModGameDir)" />
 
@@ -132,26 +135,20 @@ texture_format/etc2=false
       <Output TaskParameter="ExitCode" PropertyName="RoboExitCode" />
     </Exec>
 
-    <!-- Robocopy 返回码说明：
-         1-3: 成功（有文件同步或目录存在多余文件）
-         0: 成功（没有任何文件需要更新）
-         >3: 失败 -->
-    <Error Condition="$(RoboExitCode) &gt; 3" Text="❌ Robocopy 同步失败（错误代码 $(RoboExitCode)）。请检查：1. 游戏是否已关闭；2. publish 文件夹内是否有文件。" />
+    <Error Condition="$(RoboExitCode) &gt; 3" Text="Robocopy 同步失败（错误代码 $(RoboExitCode)）。请检查：1. 游戏是否已关闭；2. publish 文件夹内是否有文件。" />
 
-    <Message Text="✅ 构建完成！发布目录: $(PublishDir)" Importance="High" />
+    <Message Text="构建完成，发布目录: $(PublishDir)" Importance="High" />
   </Target>
 
-  <!-- 弹窗询问启动游戏 -->
-  <Target Name="AskToLaunchGame" AfterTargets="BuildAndDeploy">
-    <!-- 确保游戏环境就绪：生成 steam_appid.txt (只在文件不存在时创建)，防止游戏拦截 -->
+  <Target Name="AskToLaunchGame" AfterTargets="BuildAndDeploy" Condition="'$(LaunchGamePrompt)' != 'false'">
     <WriteLinesToFile File="$(Sts2Path)\steam_appid.txt" Lines="2868840" Overwrite="false" Encoding="ASCII" Condition="!Exists('$(Sts2Path)\steam_appid.txt')" />
 
     <PropertyGroup>
       <GameExe>$(Sts2Path)\SlayTheSpire2.exe</GameExe>
       <LaunchArgs></LaunchArgs>
     </PropertyGroup>
-
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command ^&#xD;&#xA;        Add-Type -AssemblyName PresentationFramework; ^&#xD;&#xA;        $res = [System.Windows.MessageBox]::Show('Mod已同步！是否立刻启动《杀戮尖塔2》并打开调试终端？','启动游戏','YesNo','Question'); ^&#xD;&#xA;        if ($res -eq 'Yes') { Start-Process '&quot;$(GameExe)&quot;' }" IgnoreExitCode="true" />
+<Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command ^&#xD;&#xA;        Add-Type -AssemblyName PresentationFramework; ^&#xD;&#xA;        $res = [System.Windows.MessageBox]::Show('Mod已同步！是否立刻启动《杀戮尖塔2》并打开调试终端？','启动游戏','YesNo','Question'); ^&#xD;&#xA;        if ($res -eq 'Yes') { Start-Process '&quot;$(GameExe)&quot;' }" IgnoreExitCode="true" />
   </Target>
 
 </Project>
+

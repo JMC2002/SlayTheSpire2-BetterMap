@@ -1,36 +1,28 @@
-﻿using BetterMap.Core;
 using Godot;
 using HarmonyLib;
+using JmcModLib.Utils;
 using MegaCrit.Sts2.Core.Modding;
-using System;
 using System.Reflection;
+using ModVersionInfo = BetterMap.Core.VersionInfo;
 
 namespace BetterMap;
 
 [ModInitializer(nameof(Initialize))]
 public partial class MainFile : Node
 {
-    private static MegaCrit.Sts2.Core.Logging.Logger BaseLogger { get; } =
-        new(VersionInfo.Name, MegaCrit.Sts2.Core.Logging.LogType.Generic);
-
-    // 抽离的日志函数：自动获取当前时间并添加 TAG
-    public static void Log(string message, bool isError = false)
-    {
-        string timeTag = DateTime.Now.ToString("HH:mm:ss");
-        string formattedMessage = $"[{timeTag}] [BetterMap] {message}";
-
-        if (isError) BaseLogger.Error(formattedMessage);
-        else BaseLogger.Info(formattedMessage);
-    }
-
     public static void Initialize()
     {
-        Log("======================================");
-        Log("Better Map Mod 正在启动...");
-        Log("======================================");
+        JmcModLib.Core.ModRegistry.Register(true, ModVersionInfo.Name, ModVersionInfo.Name, ModVersionInfo.Version)?
+            .RegisterLogger(uIFlags: LogConfigUIFlags.All)
+            .UseConfig()
+            .Done();
 
-        Harmony harmony = new(VersionInfo.Name);
+        ModLogger.Info("======================================");
+        ModLogger.Info("Better Map Mod 正在启动...");
+        ModLogger.Info("======================================");
+
+        Harmony harmony = new(ModVersionInfo.Name);
         harmony.PatchAll(Assembly.GetExecutingAssembly());
-        Log("Harmony 补丁已应用。");
+        ModLogger.Info("Harmony 补丁已应用。");
     }
 }
