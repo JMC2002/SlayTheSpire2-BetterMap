@@ -46,6 +46,9 @@ public partial class MapOverviewPanel : Control
     private const float BaseBottomPad = 60f;
     private const float BaseInnerPad = 3f;
     private const float BgAlpha = 0.88f;
+    private const float PointBoundsPadX = 80f;
+    private const float PointBoundsPadTop = 120f;
+    private const float PointBoundsPadBottom = 260f;
 
     // Timer 刷新频率
     private const double SyncInterval = 1d / 144;
@@ -402,7 +405,9 @@ public partial class MapOverviewPanel : Control
             if (p.Y > _worldMax.Y) _worldMax.Y = p.Y;
         }
 
-        _worldMin -= new Vector2(80f, 100f);
-        _worldMax += new Vector2(80f, 100f);
+        // 地图底部会有起点、当前位置标记和背景装饰，单纯按房间点坐标取景会裁掉下缘。
+        _worldMin -= new Vector2(PointBoundsPadX, PointBoundsPadTop);
+        _worldMax += new Vector2(PointBoundsPadX, PointBoundsPadBottom);
+        ModLogger.Debug($"小地图取景范围: {_worldMin} -> {_worldMax}");
     }
 }
