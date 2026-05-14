@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "Map Overview",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "Minimap Left Margin",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "Controls the minimap's pixel offset from the left edge of the screen.",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "Minimap Top Margin",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "Controls the minimap's pixel offset from the top edge of the screen."
+}

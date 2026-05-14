@@ -12,10 +12,7 @@ public partial class MainFile : Node
 {
     public static void Initialize()
     {
-        JmcModLib.Core.ModRegistry.Register(true, ModVersionInfo.Name, ModVersionInfo.Name, ModVersionInfo.Version)?
-            .RegisterLogger(uIFlags: LogConfigUIFlags.All)
-            .UseConfig()
-            .Done();
+        JmcModLib.Core.ModRegistry.Register<MainFile>();
 
         ModLogger.Info("======================================");
         ModLogger.Info("Better Map Mod 正在启动...");

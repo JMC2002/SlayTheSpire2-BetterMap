@@ -11,14 +11,35 @@ namespace BetterMap.Core;
 public partial class MapOverviewPanel : Control
 {
     private const string LayoutConfigGroup = "地图概览";
+    private const string LayoutConfigGroupKey = "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview";
+    private const string BaseLeftNameKey = "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME";
+    private const string BaseLeftDescriptionKey = "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION";
+    private const string BaseTopNameKey = "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME";
+    private const string BaseTopDescriptionKey = "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION";
 
     // ================== 基准参数 (以 1080P 为基准) ==================
-    [UIFloatSlider(0f, 600f, decimalPlaces: 0)]
-    [Config("小地图左边距", group: LayoutConfigGroup, onChanged: nameof(OnBaseLeftChanged))]
+    [UISlider(0.0, 600.0, 1.0)]
+    [Config(
+        "小地图左边距",
+        group: LayoutConfigGroup,
+        onChanged: nameof(OnBaseLeftChanged),
+        Description = "控制小地图距离屏幕左侧的像素偏移。",
+        DisplayNameKey = BaseLeftNameKey,
+        DescriptionKey = BaseLeftDescriptionKey,
+        GroupKey = LayoutConfigGroupKey,
+        Order = 10)]
     public static float BaseLeft = 100f;
 
-    [UIFloatSlider(0f, 600f, decimalPlaces: 0)]
-    [Config("小地图上边距", group: LayoutConfigGroup, onChanged: nameof(OnBaseTopChanged))]
+    [UISlider(0.0, 600.0, 1.0)]
+    [Config(
+        "小地图上边距",
+        group: LayoutConfigGroup,
+        onChanged: nameof(OnBaseTopChanged),
+        Description = "控制小地图距离屏幕顶部的像素偏移。",
+        DisplayNameKey = BaseTopNameKey,
+        DescriptionKey = BaseTopDescriptionKey,
+        GroupKey = LayoutConfigGroupKey,
+        Order = 20)]
     public static float BaseTop = 150f;
 
     private const float BaseWidth = 280f;

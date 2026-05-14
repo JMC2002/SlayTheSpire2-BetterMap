@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "지도 개요",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "미니맵 왼쪽 여백",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "화면 왼쪽 가장자리에서 미니맵의 픽셀 오프셋을 조정합니다.",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "미니맵 위쪽 여백",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "화면 위쪽 가장자리에서 미니맵의 픽셀 오프셋을 조정합니다."
+}

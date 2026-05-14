@@ -43,6 +43,10 @@ Steam版本直接在创意工坊订阅即可（暂未开放）
 [Github仓库](https://github.com/JMC2002/SlayTheSpire2-BetterMap)
 ## ⚙️ 2. 功能
 - 在地图界面显示全览小地图
+![效果演示](./pic/效果演示.png)
+
+- 设置界面可以调整小地图的位置
+![设置](./pic/设置演示.png)
  
 ## 🔔 3. 提醒
 - **本模组强依赖于模组[JmcModLib](https://github.com/JMC2002/JmcModLib_STS2/releases)**
@@ -51,7 +55,7 @@ Steam版本直接在创意工坊订阅即可（暂未开放）
 - 由于游戏处于EA阶段，可能会随着游戏版本更新而失效
 
 ## 🧭 5. TODO
-- 增加设置功能
+- ~~增加设置功能~~
 - 增加一些小功能
 
 **如果你喜欢这个 Mod 的话，希望可以点一个star~**

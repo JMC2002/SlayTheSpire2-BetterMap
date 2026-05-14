@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "Panoramica mappa",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "Margine sinistro minimappa",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "Controlla l'offset in pixel della minimappa dal bordo sinistro dello schermo.",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "Margine superiore minimappa",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "Controlla l'offset in pixel della minimappa dal bordo superiore dello schermo."
+}

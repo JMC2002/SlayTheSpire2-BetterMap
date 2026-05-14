@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "マップ概要",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "ミニマップ左余白",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "ミニマップの画面左端からのピクセルオフセットを調整します。",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "ミニマップ上余白",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "ミニマップの画面上端からのピクセルオフセットを調整します。"
+}

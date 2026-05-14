@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "Visão geral do mapa",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "Margem esquerda do minimapa",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "Controla o deslocamento em pixels do minimapa a partir da borda esquerda da tela.",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "Margem superior do minimapa",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "Controla o deslocamento em pixels do minimapa a partir da borda superior da tela."
+}

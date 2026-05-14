@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "Przegląd mapy",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "Lewy margines minimapy",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "Określa przesunięcie minimapy w pikselach od lewej krawędzi ekranu.",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "Górny margines minimapy",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "Określa przesunięcie minimapy w pikselach od górnej krawędzi ekranu."
+}

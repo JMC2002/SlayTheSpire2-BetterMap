@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "ภาพรวมแผนที่",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "ระยะขอบซ้ายของมินิแมป",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "ควบคุมออฟเซ็ตเป็นพิกเซลของมินิแมปจากขอบซ้ายของหน้าจอ",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "ระยะขอบบนของมินิแมป",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "ควบคุมออฟเซ็ตเป็นพิกเซลของมินิแมปจากขอบบนของหน้าจอ"
+}

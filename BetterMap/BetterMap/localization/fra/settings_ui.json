@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "Vue d'ensemble de la carte",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "Marge gauche de la mini-carte",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "Contrôle le décalage en pixels de la mini-carte depuis le bord gauche de l'écran.",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "Marge supérieure de la mini-carte",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "Contrôle le décalage en pixels de la mini-carte depuis le bord supérieur de l'écran."
+}

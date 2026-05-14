@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "地图概览",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "小地图左边距",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "控制小地图距离屏幕左侧的像素偏移。",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "小地图上边距",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "控制小地图距离屏幕顶部的像素偏移。"
+}

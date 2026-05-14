@@ -1,0 +1,7 @@
+{
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.GROUP.map_overview": "Harita genel görünümü",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.NAME": "Mini harita sol kenar boşluğu",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_left.DESCRIPTION": "Mini haritanın ekranın sol kenarından piksel cinsinden kaymasını kontrol eder.",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.NAME": "Mini harita üst kenar boşluğu",
+  "EXTENSION.JMCMODLIB.CONFIG.BetterMap.map.base_top.DESCRIPTION": "Mini haritanın ekranın üst kenarından piksel cinsinden kaymasını kontrol eder."
+}
