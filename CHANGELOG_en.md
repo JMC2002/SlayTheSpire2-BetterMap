@@ -4,6 +4,10 @@ All important changes to this project will be recorded in this file.
 
 Versioning rule: major.minor.patch. The major version is used for substantial feature improvements, the minor version is generally updated after a new Steam Workshop release, and the patch version is updated after each code-related commit (starting from 0).
 
+## [1.6.0] - 2026-7-31
+### Fixed
+- Added compatibility with game version 0.110.
+
 ## [1.5.0] - 2026-7-9
 ### Added
 - Added the ability to draw on the minimap.
